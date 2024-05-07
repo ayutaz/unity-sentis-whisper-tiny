@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -5,6 +6,8 @@ using Unity.Sentis;
 using System.IO;
 using Newtonsoft.Json;
 using System.Text;
+using TMPro;
+using UnityEngine.UI;
 
 /*
  *              Whisper Inference Code
@@ -29,48 +32,67 @@ using System.Text;
 
 public class RunWhisper : MonoBehaviour
 {
-    IWorker decoderEngine, encoderEngine, spectroEngine;
+    private IWorker decoderEngine, encoderEngine, spectroEngine;
 
-    const BackendType backend = BackendType.GPUCompute;
+    private const BackendType backend = BackendType.GPUCompute;
 
     // Link your audioclip here. Format must be 16Hz mono non-compressed.
     public AudioClip audioClip;
 
     // This is how many tokens you want. It can be adjusted.
-    const int maxTokens = 100;
+    private const int maxTokens = 100;
 
     //Special tokens see added tokens file for details
-    const int END_OF_TEXT = 50257;
-    const int START_OF_TRANSCRIPT = 50258;
-    const int ENGLISH = 50259;
-    const int GERMAN = 50261;
-    const int FRENCH = 50265;  
-    const int TRANSCRIBE = 50359; //for speech-to-text in specified language
-    const int TRANSLATE = 50358;  //for speech-to-text then translate to English
-    const int NO_TIME_STAMPS = 50363; 
-    const int START_TIME = 50364;
+    private const int END_OF_TEXT = 50257;
+    private const int START_OF_TRANSCRIPT = 50258;
+    private const int ENGLISH = 50259;
+    private const int GERMAN = 50261;
+    private const int FRENCH = 50265;
+    private const int TRANSCRIBE = 50359; //for speech-to-text in specified language
+    private const int TRANSLATE = 50358;  //for speech-to-text then translate to English
+    private const int NO_TIME_STAMPS = 50363;
+    private const int START_TIME = 50364;
 
-    int numSamples;
-    float[] data;
-    string[] tokens;
+    private int numSamples;
+    private float[] data;
+    private string[] tokens;
 
-    int currentToken = 0;
-    int[] outputTokens = new int[maxTokens];
+    private int currentToken = 0;
+    private int[] outputTokens = new int[maxTokens];
 
     // Used for special character decoding
-    int[] whiteSpaceCharacters = new int[256];
+    private int[] whiteSpaceCharacters = new int[256];
 
-    TensorFloat encodedAudio;
+    private TensorFloat encodedAudio;
 
-    bool transcribe = false;
-    string outputString = "";
+    private bool transcribe = false;
+    private string outputString = "";
 
     // Maximum size of audioClip (30s at 16kHz)
-    const int maxSamples = 30 * 16000;
+    private const int maxSamples = 30 * 16000;
 
-    void Start()
+    /// <summary>
+    /// サンプル音声を再生するボタン
+    /// </summary>
+    [SerializeField] private Button playSampleVoiceButton;
+
+    /// <summary>
+    /// 文字起こし開始ボタン
+    /// </summary>
+    [SerializeField] private Button playTranscribeVoiceButton;
+
+    /// <summary>
+    /// 翻訳された音声のテキスト
+    /// </summary>
+    [SerializeField] private TextMeshProUGUI transcribeText;
+
+    /// <summary>
+    /// サンプル音声
+    /// </summary>
+    [SerializeField] private AudioSource _audioSource;
+
+    private void Start()
     {
-
         SetupWhiteSpaceShifts();
 
         GetTokens();
@@ -95,12 +117,22 @@ public class RunWhisper : MonoBehaviour
         outputTokens[3] = NO_TIME_STAMPS;// START_TIME;//
         currentToken = 3;
 
-        LoadAudio();
-        EncodeAudio();
-        transcribe = true;
+
+        playSampleVoiceButton.onClick.AddListener(() =>
+        {
+            _audioSource.clip = audioClip;
+            _audioSource.Play();
+        });
+
+        playTranscribeVoiceButton.onClick.AddListener(() =>
+        {
+            LoadAudio();
+            EncodeAudio();
+            transcribe = true;
+        });
     }
 
-    void LoadAudio()
+    private void LoadAudio()
     {
         if(audioClip.frequency != 16000)
         {
@@ -123,7 +155,7 @@ public class RunWhisper : MonoBehaviour
     }
 
 
-    void GetTokens()
+    private void GetTokens()
     {
         var jsonText = File.ReadAllText(Application.streamingAssetsPath + "/vocab.json");
         var vocab = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, int>>(jsonText);
@@ -134,7 +166,7 @@ public class RunWhisper : MonoBehaviour
         }
     }
 
-    void EncodeAudio()
+    private void EncodeAudio()
     {
         using var input = new TensorFloat(new TensorShape(1, numSamples), data);
 
@@ -147,7 +179,7 @@ public class RunWhisper : MonoBehaviour
 
 
     // Update is called once per frame
-    void Update()
+    private void Update()
     {
         if (transcribe && currentToken < outputTokens.Length - 1)
         {
@@ -179,17 +211,18 @@ public class RunWhisper : MonoBehaviour
             else outputString += GetUnicodeText(tokens[ID]);
 
             Debug.Log(outputString);
+            transcribeText.text = outputString;
         }
     }
 
     // Translates encoded special characters to Unicode
-    string GetUnicodeText(string text)
+    private string GetUnicodeText(string text)
     {
         var bytes = Encoding.GetEncoding("ISO-8859-1").GetBytes(ShiftCharacterDown(text));
         return Encoding.UTF8.GetString(bytes);
     }
 
-    string ShiftCharacterDown(string text)
+    private string ShiftCharacterDown(string text)
     {
         string outText = "";
         foreach (char letter in text)
@@ -200,7 +233,7 @@ public class RunWhisper : MonoBehaviour
         return outText;
     }
 
-    void SetupWhiteSpaceShifts()
+    private void SetupWhiteSpaceShifts()
     {
         for (int i = 0, n = 0; i < 256; i++)
         {
@@ -208,9 +241,9 @@ public class RunWhisper : MonoBehaviour
         }
     }
 
-    bool IsWhiteSpace(char c)
+    private bool IsWhiteSpace(char c)
     {
-        return !(('!' <= c && c <= '~') || ('�' <= c && c <= '�') || ('�' <= c && c <= '�'));
+        return !(('!' <= c && c <= '~') || ('�' <= c && c <= '�') || ('�' <= c && c <= '�'));
     }
 
     private void OnApplicationQuit()
